@@ -1,0 +1,587 @@
+import React, { useMemo, useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Select, SelectTrigger, SelectValue, SelectItem, SelectContent } from "@/components/ui/select";
+import { Copy, Download, Check } from "lucide-react";
+
+// Utility helpers
+const cx = (...classes: string[]) => classes.filter(Boolean).join(" ");
+const copy = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const tones = [
+  "Confident",
+  "Friendly",
+  "Cheeky",
+  "Luxury / Premium",
+  "Scientific / Clinical",
+  "Warm & Caring",
+  "Bold & Energetic",
+  "Minimal & Calm",
+];
+
+const frameworks = ["PAS (Problem-Agitate-Solution)", "AIDA", "FAB", "Testimonial", "Story", "Before-After-Bridge", "FAQ"];
+
+const headlineStyles = [
+  "Curiosity",
+  "Problem-led",
+  "Numbered / Listicle",
+  "Testimonial-style",
+  "Benefit-first",
+  "Urgency / FOMO",
+  "Contrarian / Pattern-break",
+];
+
+const languages = ["English", "Hinglish", "Hindi", "Bengali", "Gujarati", "Marathi", "Tamil", "Telugu"];
+
+const campaignGoals = ["Awareness", "Engagement", "Sales", "Lead Generation", "Retargeting"];
+
+export default function LivePromptGenerator() {
+  const [mode, setMode] = useState<"adcopy" | "headlines">("adcopy");
+
+  // Inputs
+  const [product, setProduct] = useState("");
+  const [audience, setAudience] = useState("");
+  const [brand, setBrand] = useState("");
+  const [offer, setOffer] = useState("");
+  const [uniquePoints, setUniquePoints] = useState("");
+  const [proof, setProof] = useState("");
+  const [platform, setPlatform] = useState("Meta (Facebook + Instagram)");
+  const [tone, setTone] = useState(tones[0]);
+  const [framework, setFramework] = useState(frameworks[0]);
+  const [headStyle, setHeadStyle] = useState(headlineStyles[0]);
+  const [language, setLanguage] = useState(languages[0]);
+  const [campaignGoal, setCampaignGoal] = useState(campaignGoals[0]);
+
+  // Constraints & options
+  const [wordLimit, setWordLimit] = useState([40]);
+  const [headlineCount, setHeadlineCount] = useState(5);
+  const [variantCount, setVariantCount] = useState(3);
+  const [includeEmojis, setIncludeEmojis] = useState(false);
+  const [includeCTA, setIncludeCTA] = useState(true);
+  const [includeHashtags, setIncludeHashtags] = useState(false);
+  const [forceSimple, setForceSimple] = useState(true);
+  const [addHooks, setAddHooks] = useState(true);
+  const [negativeList, setNegativeList] = useState("No clickbait. No false claims. Avoid medical claims. Keep compliant for Meta.");
+  const [ctaText, setCtaText] = useState("Shop Now");
+  const [seed, setSeed] = useState("");
+
+  // Headline length (soft guidance)
+  const [headlineLength, setHeadlineLength] = useState([6]); // words
+
+  // Advanced toggles
+  const [includeTOC, setIncludeTOC] = useState(false);
+  const [tocRatio, setTocRatio] = useState("1:1, 4:5, 9:16");
+  const [brandVoiceRules, setBrandVoiceRules] = useState("");
+
+  const safe = (label: string, value: string) => (value?.trim() ? `**${label}:** ${value.trim()}\n` : "");
+
+  const promptHeader = useMemo(() => {
+    return `Act as a senior performance copywriter for D2C brands. Your task is to write high-converting ${
+      mode === "adcopy" ? "Meta ad copy" : "Meta ad headlines"
+    } for ${brand || "[Brand]"}. Audience is ${audience || "[target persona]"}. Use a ${tone.toLowerCase()} tone in ${language}. Platform: ${platform}. Campaign Goal: ${campaignGoal}.`;
+  }, [mode, brand, audience, tone, language, platform, campaignGoal]);
+
+  const constraints = useMemo(() => {
+    const lines: string[] = [];
+    if (forceSimple) lines.push("Keep reading level simple (Grade 5). Use short sentences.");
+    if (includeEmojis) lines.push("Use tasteful emojis sparingly.");
+    if (includeCTA && ctaText) lines.push(`End with a strong CTA: "${ctaText}".`);
+    if (includeHashtags) lines.push("Add 3-5 relevant, non-spammy hashtags at the end.");
+    lines.push(`Soft word limit: ~${wordLimit[0]} words.`);
+    lines.push(`Avoid: ${negativeList}`);
+    return lines.map((l) => `- ${l}`).join("\n");
+  }, [forceSimple, includeEmojis, includeCTA, includeHashtags, ctaText, wordLimit, negativeList]);
+
+  const buildAdcopyInstruction = () => {
+    const hookLine = addHooks
+      ? `\nGenerate ${variantCount} distinct variations. Each should start with a thumb-stopping HOOK related to the audience's pain/aspiration. Use the ${framework} framework.`
+      : `\nGenerate ${variantCount} distinct variations using the ${framework} framework.`;
+
+    const seedLine = seed?.trim() ? `\nInspiration seed (rewrite & improve, not verbatim): ${seed.trim()}` : "";
+
+    return [
+      promptHeader,
+      "\n\nPRODUCT CONTEXT\n" +
+        safe("Product", product) +
+        safe("Offer", offer) +
+        safe("Unique Selling Points (USPs)", uniquePoints) +
+        safe("Proof / Social Proof", proof) +
+        (brandVoiceRules?.trim() ? safe("Brand Voice", brandVoiceRules) : ""),
+      "\nOUTPUT REQUIREMENTS\n" +
+        `- Write ${variantCount} ad copy variations for Meta.` +
+        `\n- Use ${framework}.` +
+        (includeTOC ? `\n- Also provide a short Text-On-Creative (TOC) line (max 8 words) per variation, with aspect ratios ${tocRatio}.` : "") +
+        `\n- ${constraints}` +
+        `\n- Avoid headlines here. Focus on body copy.` +
+        (seedLine || ""),
+    ].join("");
+  };
+
+  const buildHeadlineInstruction = () => {
+    const seedLine = seed?.trim() ? `\nInspiration seed (rewrite & improve, not verbatim): ${seed.trim()}` : "";
+
+    return [
+      promptHeader,
+      "\n\nPRODUCT CONTEXT\n" +
+        safe("Product", product) +
+        safe("Offer", offer) +
+        safe("Unique Selling Points (USPs)", uniquePoints) +
+        safe("Proof / Social Proof", proof) +
+        (brandVoiceRules?.trim() ? safe("Brand Voice", brandVoiceRules) : ""),
+      "\nOUTPUT REQUIREMENTS\n" +
+        `- Generate ${headlineCount} headline options in the "${headStyle}" style.` +
+        `\n- Target headline length: ~${headlineLength[0]} words.` +
+        `\n- Keep headlines punchy and platform-safe. No excessive punctuation.` +
+        `\n- ${constraints}` +
+        (seedLine || ""),
+    ].join("");
+  };
+
+  const prompt = useMemo(
+    () => (mode === "adcopy" ? buildAdcopyInstruction() : buildHeadlineInstruction()),
+    [
+      mode,
+      brand,
+      audience,
+      tone,
+      language,
+      platform,
+      product,
+      offer,
+      uniquePoints,
+      proof,
+      brandVoiceRules,
+      includeTOC,
+      tocRatio,
+      constraints,
+      framework,
+      addHooks,
+      variantCount,
+      seed,
+      headlineCount,
+      headStyle,
+      headlineLength,
+      campaignGoal,
+    ],
+  );
+
+  const downloadTxt = () => {
+    const blob = new Blob([prompt], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `prompt-${mode}-${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <div className="min-h-screen w-full bg-white text-gray-900 p-6">
+      <div className="max-w-6xl mx-auto grid gap-6">
+        <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Live Prompt Generator</h1>
+            <p className="text-sm text-gray-600">
+              Build high-converting Meta ad copy & headlines with structured, repeatable prompts.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={async () => {
+                const ok = await copy(prompt);
+                setCopied(ok);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+              className="rounded-2xl"
+            >
+              {copied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
+              {copied ? "Copied!" : "Copy Prompt"}
+            </Button>
+            <Button variant="outline" onClick={downloadTxt} className="rounded-2xl">
+              <Download className="w-4 h-4 mr-2" />
+              Download
+            </Button>
+          </div>
+        </header>
+
+        <Tabs value={mode} onValueChange={(v) => setMode(v as any)} className="w-full">
+          <TabsList className="grid grid-cols-2 w-full sm:w-auto">
+            <TabsTrigger value="adcopy">Ad Copy</TabsTrigger>
+            <TabsTrigger value="headlines">Headlines</TabsTrigger>
+          </TabsList>
+
+          {/* AD COPY TAB */}
+          <TabsContent value="adcopy" className="mt-4 grid md:grid-cols-3 gap-6">
+            <Card className="md:col-span-2 shadow-sm rounded-2xl">
+              <CardContent className="p-6 space-y-6">
+                <SectionTitle title="Core Inputs" subtitle="Describe your product and intent" />
+                <Grid2>
+                  <Field label="Brand" value={brand} setValue={setBrand} placeholder="e.g., The Pink Foundry" />
+                  <Field label="Product" value={product} setValue={setProduct} placeholder="e.g., 1% Pure Ceramide Moisturiser" />
+                  <Field label="Audience Persona" value={audience} setValue={setAudience} placeholder="e.g., Women 22–35, oily/acne-prone" />
+                  <Field label="Offer (optional)" value={offer} setValue={setOffer} placeholder="e.g., 20% Off + Free Mini" />
+                </Grid2>
+                <Grid2>
+                  <TextField
+                    label="USPs"
+                    value={uniquePoints}
+                    setValue={setUniquePoints}
+                    placeholder="e.g., 3:1:1 ceramide ratio; fragrance-free; made for Indian climate"
+                  />
+                  <TextField
+                    label="Proof (social proof, stats, awards)"
+                    value={proof}
+                    setValue={setProof}
+                    placeholder="e.g., 5,000+ reviews; dermat-recommended; clinical study"
+                  />
+                </Grid2>
+
+                <Divider />
+                <SectionTitle title="Style & Strategy" subtitle="Tone, framework, language & goal" />
+                <div className="grid md:grid-cols-2 gap-4">
+                  <SelectField label="Tone" value={tone} setValue={setTone} options={tones} />
+                  <SelectField label="Framework" value={framework} setValue={setFramework} options={frameworks} />
+                  <SelectField label="Language" value={language} setValue={setLanguage} options={languages} />
+                  <SelectField label="Campaign Goal" value={campaignGoal} setValue={setCampaignGoal} options={campaignGoals} />
+                </div>
+
+                <Divider />
+                <SectionTitle title="Constraints & Options" subtitle="Control clarity, length, and compliance" />
+                <div className="grid md:grid-cols-2 gap-4">
+                  <SliderField label={`Word Limit (~${wordLimit[0]} words)`} value={wordLimit} setValue={setWordLimit} min={20} max={120} step={5} />
+                  <CounterField label="# of Variations" value={variantCount} setValue={setVariantCount} min={1} max={10} />
+                </div>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <SwitchField label="Start with a HOOK" checked={addHooks} setChecked={setAddHooks} />
+                  <SwitchField label="Include CTA" checked={includeCTA} setChecked={setIncludeCTA} />
+                  <SwitchField label="Use Emojis" checked={includeEmojis} setChecked={setIncludeEmojis} />
+                  <SwitchField label="Add Hashtags" checked={includeHashtags} setChecked={setIncludeHashtags} />
+                  <SwitchField label="Simple Language" checked={forceSimple} setChecked={setForceSimple} />
+                  <SwitchField label="Also generate TOC line" checked={includeTOC} setChecked={setIncludeTOC} />
+                </div>
+                <Grid2>
+                  {includeCTA && (
+                    <Field label="CTA Text" value={ctaText} setValue={setCtaText} placeholder="e.g., Shop Now, Get Yours, Try It Today" />
+                  )}
+                  {includeTOC && (
+                    <Field label="TOC Aspect Ratios" value={tocRatio} setValue={setTocRatio} placeholder="e.g., 1:1, 4:5, 9:16" />
+                  )}
+                </Grid2>
+                <TextField
+                  label="Brand Voice Rules (optional)"
+                  value={brandVoiceRules}
+                  setValue={setBrandVoiceRules}
+                  placeholder="e.g., Avoid slang, emphasize science, always mention ‘for Indian skin’"
+                />
+                <TextField label="Negative / Compliance Notes" value={negativeList} setValue={setNegativeList} />
+
+                <Divider />
+                <TextField
+                  label="Inspiration Seed (paste any rough idea to improve)"
+                  value={seed}
+                  setValue={setSeed}
+                  placeholder="Paste a rough draft or past winner to iterate."
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm rounded-2xl">
+              <CardContent className="p-6 space-y-4">
+                <SectionTitle title="Generated Prompt" subtitle="Copy and paste into ChatGPT" />
+                <Textarea value={prompt} readOnly className="h-[520px] text-sm" />
+                <div className="flex gap-2">
+                  <Button
+                    onClick={async () => {
+                      const ok = await copy(prompt);
+                      setCopied(ok);
+                      setTimeout(() => setCopied(false), 1500);
+                    }}
+                    className="rounded-2xl w-full"
+                  >
+                    {copied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
+                    {copied ? "Copied!" : "Copy Prompt"}
+                  </Button>
+                </div>
+                <HelperTips />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* HEADLINES TAB */}
+          <TabsContent value="headlines" className="mt-4 grid md:grid-cols-3 gap-6">
+            <Card className="md:col-span-2 shadow-sm rounded-2xl">
+              <CardContent className="p-6 space-y-6">
+                <SectionTitle title="Core Inputs" subtitle="Context for headline generation" />
+                <Grid2>
+                  <Field label="Brand" value={brand} setValue={setBrand} placeholder="e.g., Auli" />
+                  <Field label="Product" value={product} setValue={setProduct} placeholder="e.g., Collagen Mask" />
+                  <Field label="Audience Persona" value={audience} setValue={setAudience} placeholder="e.g., Women 25–40, dry skin" />
+                  <Field label="Offer (optional)" value={offer} setValue={setOffer} placeholder="e.g., Buy 2 Get 1" />
+                </Grid2>
+                <Grid2>
+                  <TextField label="USPs" value={uniquePoints} setValue={setUniquePoints} placeholder="e.g., Visible plump in 15 mins" />
+                  <TextField label="Proof / Social Proof" value={proof} setValue={setProof} placeholder="e.g., Derm-approved; 100+ creators used" />
+                </Grid2>
+
+                <Divider />
+                <SectionTitle title="Style & Strategy" subtitle="Tone, headline style, language & goal" />
+                <div className="grid md:grid-cols-2 gap-4">
+                  <SelectField label="Tone" value={tone} setValue={setTone} options={tones} />
+                  <SelectField label="Headline Style" value={headStyle} setValue={setHeadStyle} options={headlineStyles} />
+                  <SelectField label="Language" value={language} setValue={setLanguage} options={languages} />
+                  <SelectField label="Campaign Goal" value={campaignGoal} setValue={setCampaignGoal} options={campaignGoals} />
+                </div>
+
+                <Divider />
+                <SectionTitle title="Constraints & Options" subtitle="Control length & count" />
+                <div className="grid md:grid-cols-2 gap-4">
+                  <SliderField
+                    label={`Target Headline Length (~${headlineLength[0]} words)`}
+                    value={headlineLength}
+                    setValue={setHeadlineLength}
+                    min={2}
+                    max={12}
+                    step={1}
+                  />
+                  <CounterField label="# of Headlines" value={headlineCount} setValue={setHeadlineCount} min={3} max={20} />
+                </div>
+
+                <TextField
+                  label="Brand Voice Rules (optional)"
+                  value={brandVoiceRules}
+                  setValue={setBrandVoiceRules}
+                  placeholder="e.g., No slang; crisp and authoritative"
+                />
+                <TextField label="Negative / Compliance Notes" value={negativeList} setValue={setNegativeList} />
+                <TextField label="Inspiration Seed (optional)" value={seed} setValue={setSeed} placeholder="Paste a rough idea to improve" />
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm rounded-2xl">
+              <CardContent className="p-6 space-y-4">
+                <SectionTitle title="Generated Prompt" subtitle="Copy and paste into ChatGPT" />
+                <Textarea value={prompt} readOnly className="h-[520px] text-sm" />
+                <div className="flex gap-2">
+                  <Button
+                    onClick={async () => {
+                      const ok = await copy(prompt);
+                      setCopied(ok);
+                      setTimeout(() => setCopied(false), 1500);
+                    }}
+                    className="rounded-2xl w-full"
+                  >
+                    {copied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
+                    {copied ? "Copied!" : "Copy Prompt"}
+                  </Button>
+                </div>
+                <HelperTips headlinesMode />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        <footer className="text-xs text-gray-500 text-center pt-2 pb-8">
+          Built for Marketing Lab • Use this tool to standardize how the team briefs ChatGPT and generates consistent, testable copy.
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div>
+      <h2 className="text-xl font-semibold">{title}</h2>
+      {subtitle && <p className="text-sm text-gray-600">{subtitle}</p>}
+    </div>
+  );
+}
+
+function Divider() {
+  return <div className="border-t my-2" />;
+}
+
+function Grid2({ children }: { children: React.ReactNode }) {
+  return <div className="grid md:grid-cols-2 gap-4">{children}</div>;
+}
+
+function Field({
+  label,
+  value,
+  setValue,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  setValue: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm">{label}</Label>
+      <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder={placeholder} className="rounded-xl" />
+    </div>
+  );
+}
+
+function TextField({
+  label,
+  value,
+  setValue,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  setValue: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm">{label}</Label>
+      <Textarea value={value} onChange={(e) => setValue(e.target.value)} placeholder={placeholder} className="min-h-[88px] text-sm" />
+    </div>
+  );
+}
+
+function SwitchField({
+  label,
+  checked,
+  setChecked,
+}: {
+  label: string;
+  checked: boolean;
+  setChecked: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between border rounded-xl px-3 py-2">
+      <Label className="text-sm">{label}</Label>
+      <Switch checked={checked} onCheckedChange={setChecked} />
+    </div>
+  );
+}
+
+function SliderField({
+  label,
+  value,
+  setValue,
+  min = 0,
+  max = 100,
+  step = 1,
+}: {
+  label: string;
+  value: number[];
+  setValue: (v: number[]) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm">{label}</Label>
+      <Slider value={value} onValueChange={setValue} min={min} max={max} step={step} />
+    </div>
+  );
+}
+
+function CounterField({
+  label,
+  value,
+  setValue,
+  min = 1,
+  max = 10,
+}: {
+  label: string;
+  value: number;
+  setValue: (v: number) => void;
+  min?: number;
+  max?: number;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm">{label}</Label>
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="outline" onClick={() => setValue(Math.max(min, value - 1))} className="rounded-xl">
+          -
+        </Button>
+        <span className="w-10 text-center">{value}</span>
+        <Button type="button" variant="outline" onClick={() => setValue(Math.min(max, value + 1))} className="rounded-xl">
+          +
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SelectField<T extends string>({
+  label,
+  value,
+  setValue,
+  options,
+  renderLabel,
+}: {
+  label: string;
+  value: T;
+  setValue: (v: T) => void;
+  options: (string | { value: T; label: string })[];
+  renderLabel?: (v: T) => string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm">{label}</Label>
+      <Select value={value} onValueChange={(v) => setValue(v as T)}>
+        <SelectTrigger className="rounded-xl">
+          <SelectValue placeholder="Select" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt, idx) => {
+            const v = typeof opt === "string" ? (opt as T) : (opt.value as T);
+            const l = typeof opt === "string" ? (opt as string) : (opt.label as string);
+            return (
+              <SelectItem key={idx} value={v}>
+                {renderLabel ? renderLabel(v) : l}
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function HelperTips({ headlinesMode = false }: { headlinesMode?: boolean }) {
+  return (
+    <div className="rounded-xl bg-gray-50 p-3 text-xs leading-relaxed">
+      <p className="font-semibold mb-1">Tips</p>
+      {headlinesMode ? (
+        <ul className="list-disc pl-4 space-y-1">
+          <li>Keep it under ~6–8 words for thumb-stopping clarity.</li>
+          <li>Match headline style to the campaign goal (e.g., curiosity for Awareness, urgency/offer for Sales).</li>
+          <li>Avoid excessive punctuation, ALL CAPS, or clickbait.</li>
+          <li>Test at least 5–10 headlines per creative. Kill underperformers fast.</li>
+        </ul>
+      ) : (
+        <ul className="list-disc pl-4 space-y-1">
+          <li>Lead with a human problem or desire, then bridge to your USP.</li>
+          <li>Keep sentences short. Aim for Grade-5 readability.</li>
+          <li>Make one point well; don’t cram.</li>
+          <li>Ensure the first 2 lines work as standalone hooks on mobile.</li>
+        </ul>
+      )}
+    </div>
+  );
+}
